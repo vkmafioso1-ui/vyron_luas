@@ -1,0 +1,75 @@
+name: Atualizar novos.json
+
+on:
+  push:
+    paths:
+      - '*.zip'            # roda quando você sobe/atualiza um {appid}.zip
+  workflow_dispatch:        # botão "Run workflow" (pra rodar manual a 1ª vez)
+
+permissions:
+  contents: write
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # histórico completo -> dá pra ordenar por data de adição
+
+      - name: Gerar novos.json
+        run: |
+          python3 - <<'PY'
+          import os, re, json, subprocess, urllib.request, time
+
+          # 1) todos os {appid}.zip da raiz
+          files = [f for f in os.listdir('.') if re.fullmatch(r'\d+\.zip', f)]
+
+          # 2) ordena pelos mais recém-adicionados (data do commit que criou cada arquivo)
+          def added_at(f):
+              out = subprocess.run(
+                  ['git', 'log', '--diff-filter=A', '--format=%at', '-1', '--', f],
+                  capture_output=True, text=True).stdout.strip()
+              return int(out) if out.isdigit() else 0
+          files.sort(key=added_at, reverse=True)
+          files = files[:30]   # mostra os 30 mais novos
+
+          # 3) overrides manuais de nome (OPCIONAL): crie nomes.json = {"3764200":"Resident Evil Requiem"}
+          overrides = {}
+          if os.path.exists('nomes.json'):
+              try:
+                  overrides = {str(k): v for k, v in json.load(open('nomes.json', encoding='utf-8')).items()}
+              except Exception as e:
+                  print('nomes.json:', e)
+
+          # 4) nome via Steam (o runner do GitHub alcança a Steam, sem o redirect dos clientes)
+          def steam_name(appid):
+              try:
+                  url = f'https://store.steampowered.com/api/appdetails?appids={appid}&l=portuguese'
+                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      d = json.load(r)
+                  if d.get(str(appid), {}).get('success'):
+                      return d[str(appid)]['data']['name']
+              except Exception as e:
+                  print('name fail', appid, e)
+              return None
+
+          novos = []
+          for f in files:
+              appid = f[:-4]
+              name = overrides.get(appid) or steam_name(appid) or f'App {appid}'
+              novos.append({'appid': int(appid), 'name': name})
+              time.sleep(0.3)   # gentil com a API da Steam
+
+          json.dump(novos, open('novos.json', 'w', encoding='utf-8'),
+                    ensure_ascii=False, indent=2)
+          print(f'novos.json gerado: {len(novos)} jogos')
+          PY
+
+      - name: Commit novos.json
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add novos.json
+          git diff --cached --quiet || (git commit -m 'auto: atualiza novos.json' && git push)

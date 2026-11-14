@@ -1,0 +1,118 @@
+name: Atualizar novos.json e curados.zip
+
+on:
+  push:
+    paths:
+      - '*.zip'            # roda quando você sobe/atualiza um {appid}.zip
+      - '!curados.zip'     # mas NAO quando o proprio bundle muda (evita loop infinito)
+  workflow_dispatch:        # botão "Run workflow" (pra rodar manual)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: novos
+  cancel-in-progress: false   # nao cancela: enfileira, evita run de delete sobrescrever o do re-add
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # histórico completo -> dá pra ordenar por data de adição
+
+      - name: Gerar novos.json
+        run: |
+          python3 - <<'PY'
+          import os, re, json, subprocess, urllib.request, time
+
+          # 1) todos os {appid}.zip da raiz, ordenados pelos mais recem-adicionados
+          files = [f for f in os.listdir('.') if re.fullmatch(r'\d+\.zip', f)]
+          def added_at(f):
+              out = subprocess.run(['git','log','--diff-filter=A','--format=%at','-1','--',f],
+                                   capture_output=True, text=True).stdout.strip()
+              return int(out) if out.isdigit() else 0
+          files.sort(key=added_at, reverse=True)
+          files = files[:30]
+
+          # 2) CACHE: reusa nomes e capas JA BONS do novos.json atual (se a Steam falhar, NAO regride)
+          cache, cache_img = {}, {}
+          if os.path.exists('novos.json'):
+              try:
+                  for g in json.load(open('novos.json', encoding='utf-8')):
+                      n = (g.get('name') or '')
+                      if n and not n.startswith('App '):
+                          cache[str(g.get('appid'))] = n
+                      if g.get('img'):
+                          cache_img[str(g.get('appid'))] = g['img']
+              except Exception as e:
+                  print('cache novos.json:', e)
+
+          # 3) overrides manuais opcionais (nomes.json = {"3764200":"Resident Evil Requiem"})
+          overrides = {}
+          if os.path.exists('nomes.json'):
+              try:
+                  overrides = {str(k): v for k, v in json.load(open('nomes.json', encoding='utf-8')).items()}
+              except Exception as e:
+                  print('nomes.json:', e)
+
+          # 4) nome + capa OFICIAL via Steam com RETRY. A capa TEM que vir do header_image: jogos novos
+          #    usam caminho com hash (apps/{id}/{hash}/header.jpg); o caminho generico da 404 neles.
+          def steam_info(appid):
+              for _ in range(3):
+                  try:
+                      url = f'https://store.steampowered.com/api/appdetails?appids={appid}&l=portuguese&filters=basic'
+                      req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                      with urllib.request.urlopen(req, timeout=20) as r:
+                          d = json.load(r)
+                      # a Steam as vezes responde com OUTRO appid como chave (redirect): pega a 1a resposta
+                      v = next(iter((d or {}).values()), {}) or {}
+                      if v.get('success'):
+                          g = v['data']
+                          return g.get('name'), g.get('header_image', '')
+                      return None, ''
+                  except Exception as e:
+                      print('appdetails fail', appid, e)
+                  time.sleep(1.5)
+              return None, ''
+
+          novos = []
+          for f in files:
+              appid = f[:-4]
+              nm, img = steam_info(appid)
+              nm  = overrides.get(appid) or nm or cache.get(appid) or f'App {appid}'
+              img = img or cache_img.get(appid, '')   # Steam falhou -> mantem a capa que ja funcionava
+              novos.append({'appid': int(appid), 'name': nm, 'img': img})
+              time.sleep(0.8)
+
+          json.dump(novos, open('novos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          print(f'novos.json gerado: {len(novos)} jogos')
+          PY
+
+      - name: Gerar curados.zip (so os .lua de cada {appid}.zip - bundle leve)
+        run: |
+          python3 - <<'PY'
+          import os, re, zipfile
+          games = [f for f in os.listdir('.') if re.fullmatch(r'\d+\.zip', f)]
+          n = 0
+          with zipfile.ZipFile('curados.zip', 'w', zipfile.ZIP_DEFLATED) as out:
+              for f in sorted(games):
+                  appid = f[:-4]
+                  try:
+                      with zipfile.ZipFile(f) as z:
+                          luas = [zn for zn in z.namelist() if zn.endswith('.lua')]
+                          if luas:
+                              out.writestr(appid + '.lua', z.read(luas[0]))
+                              n += 1
+                  except Exception as e:
+                      print('skip', f, e)
+          print(f'curados.zip gerado: {n} luas')
+          PY
+
+      - name: Commit novos.json + curados.zip
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add novos.json curados.zip
+          git diff --cached --quiet || (git commit -m 'auto: atualiza novos.json + curados.zip' && git push)

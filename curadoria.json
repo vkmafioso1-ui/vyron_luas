@@ -1,0 +1,63 @@
+[
+  {
+    "keys": [
+      "gta",
+      "grand theft auto",
+      "gta v",
+      "gta 5",
+      "gtav",
+      "gta5",
+      "gta legacy",
+      "gta v legacy",
+      "grand theft auto v",
+      "gta antigo"
+    ],
+    "appid": 271590,
+    "name": "Grand Theft Auto V Legacy",
+    "img": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/271590/header.jpg"
+  },
+  {
+    "keys": [
+      "gta",
+      "grand theft auto",
+      "gta v",
+      "gta 5",
+      "gtav",
+      "gta5",
+      "gta enhanced",
+      "gta v enhanced",
+      "grand theft auto v enhanced"
+    ],
+    "appid": 3240220,
+    "name": "Grand Theft Auto V Enhanced",
+    "img": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3240220/header.jpg"
+  },
+  {
+    "keys": [
+      "homem aranha",
+      "homem-aranha",
+      "aranha",
+      "spider man",
+      "spider-man",
+      "spiderman",
+      "homem aranha remasterizado",
+      "spider-man remastered"
+    ],
+    "appid": 1817070,
+    "name": "Marvel's Spider-Man Remastered",
+    "img": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1817070/header.jpg"
+  },
+  {
+    "keys": [
+      "mw4",
+      "modern warfare 4",
+      "call of duty modern warfare 4",
+      "cod mw4",
+      "cod modern warfare 4",
+      "modern warfare iv"
+    ],
+    "appid": 1938090,
+    "name": "Call of Duty®",
+    "img": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1938090/23af6cf41e2d09620caa07700a4cb3288dbcbaa8/header.jpg?t=1793206213"
+  }
+]
